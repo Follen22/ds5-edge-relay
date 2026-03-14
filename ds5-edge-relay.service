@@ -1,0 +1,13 @@
+[Unit]
+Description=DualSense Edge HID Relay Daemon
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ds5-edge-relay --wait
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
