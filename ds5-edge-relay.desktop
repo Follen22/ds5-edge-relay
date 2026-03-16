@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=DS5 Edge Relay
+GenericName=Gamepad Relay
+Comment=DualSense Edge to virtual DualSense relay for Proton/Steam compatibility
+Exec=ds5-edge-relay
+Icon=input-gaming
+Terminal=false
+Type=Application
+Categories=Game;Utility;
+Keywords=dualsense;ps5;gamepad;controller;relay;
+StartupNotify=false

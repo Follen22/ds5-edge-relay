@@ -8,10 +8,8 @@
 #include <string>
 #include <vector>
 
-#include <dirent.h>
 #include <fcntl.h>
 #include <linux/hidraw.h>
-#include <linux/input.h> // EVIOCGRAB
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -113,61 +111,6 @@ namespace relay {
 
         buf.resize(static_cast<size_t>(n));
         return buf;
-    }
-
-    /// Находит evdev-ноды устройства через sysfs и захватывает их (EVIOCGRAB).
-    /// После этого физический контроллер невидим для Steam и игры.
-    [[nodiscard]] std::vector<Fd>
-    grab_evdev_nodes(const std::string& hidraw_path) {
-        namespace fs = std::filesystem;
-
-        const std::string hidraw_name =
-        fs::path(hidraw_path).filename().string(); // "hidrawN"
-
-        const fs::path sysfs_base =
-        "/sys/class/hidraw/" + hidraw_name + "/device/input";
-
-        std::vector<Fd> grabbed;
-
-        std::error_code ec;
-        if (!fs::exists(sysfs_base, ec)) {
-            fprintf(stderr, "[WARN] sysfs not found: %s\n", sysfs_base.c_str());
-            return grabbed;
-        }
-
-        for (const auto& input_entry : fs::directory_iterator(sysfs_base, ec)) {
-            for (const auto& event_entry :
-                fs::directory_iterator(input_entry.path(), ec)) {
-                const auto event_name = event_entry.path().filename().string();
-            if (event_name.rfind("event", 0) != 0) continue;
-
-            const std::string evdev_path = "/dev/input/" + event_name;
-                const int fd = ::open(evdev_path.c_str(), O_RDWR | O_NONBLOCK);
-                if (fd < 0) {
-                    fprintf(stderr, "[WARN] Cannot open %s: %s\n",
-                            evdev_path.c_str(), strerror(errno));
-                    continue;
-                }
-
-                if (::ioctl(fd, EVIOCGRAB, 1) < 0) {
-                    fprintf(stderr, "[WARN] EVIOCGRAB failed for %s: %s\n",
-                            evdev_path.c_str(), strerror(errno));
-                    ::close(fd);
-                    continue;
-                }
-
-                printf("[INFO] Grabbed evdev: %s\n", evdev_path.c_str());
-                grabbed.emplace_back(fd);
-                }
-        }
-
-        if (grabbed.empty()) {
-            fprintf(stderr,
-                    "[WARN] No evdev nodes grabbed. Game may see both controllers.\n"
-                    "       Try: sudo setcap cap_dac_override+ep ./ds5-edge-relay\n");
-        }
-
-        return grabbed;
     }
 
 } // namespace relay
