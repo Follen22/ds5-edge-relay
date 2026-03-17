@@ -40,7 +40,7 @@ target_link_libraries(ds5-edge-relay PRIVATE
 )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    target_compile_options(ds5-edge-relay-test PRIVATE -O3)
+    target_compile_options(ds5-edge-relay PRIVATE -O3)
     set_target_properties(ds5-edge-relay PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
