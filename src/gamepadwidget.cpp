@@ -1,10 +1,6 @@
 #include "gamepadwidget.hpp"
 #include <QPainter>
 #include <QMouseEvent>
-#include <QCoreApplication>
-#include <QDir>
-#include <QFile>
-#include <QStandardPaths>
 
 namespace {
 QVector<GamepadWidget::Zone> make_zones()
@@ -40,15 +36,7 @@ GamepadWidget::GamepadWidget(QWidget* parent)
     : QWidget(parent)
     , zones_(make_zones())
 {
-    // 1. Installed data dir (/usr/share/ds5-edge-relay/)
-    QString path = QStandardPaths::locate(QStandardPaths::AppDataLocation, "1.png");
-    // 2. Next to the binary (dev / portable build)
-    if (path.isEmpty())
-        path = QCoreApplication::applicationDirPath() + "/1.png";
-    // 3. Working directory fallback
-    if (!QFile::exists(path))
-        path = QDir::currentPath() + "/1.png";
-    pixmap_.load(path);
+    pixmap_.load(":/1.png");
     setMouseTracking(true);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 }

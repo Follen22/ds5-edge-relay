@@ -27,6 +27,7 @@ add_executable(ds5-edge-relay
     src/gamepadwidget.cpp
     src/bindeditorwidget.cpp
     src/bindstorage.cpp
+    resources.qrc
 )
 
 target_include_directories(ds5-edge-relay PRIVATE
