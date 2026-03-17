@@ -78,6 +78,16 @@ void RelayWorker::stop() {
     running_ = false;
 }
 
+void RelayWorker::set_bindings(std::vector<ds5::ButtonBinding> bindings) {
+    bindings_ = std::move(bindings);
+}
+
+void RelayWorker::update_bindings(std::vector<ds5::ButtonBinding> bindings) {
+    std::lock_guard<std::mutex> lk(pending_mutex_);
+    pending_bindings_ = std::move(bindings);
+    bindings_dirty_.store(true, std::memory_order_release);
+}
+
 void RelayWorker::run() {
     running_ = true;
 
@@ -172,6 +182,34 @@ void RelayWorker::run() {
         if (pfds[0].revents & POLLIN) {
             const ssize_t n = ::read(raw_fd, buf, BUF);
             if (n > 0) {
+                // Swap in updated bindings from the UI thread if available
+                if (bindings_dirty_.load(std::memory_order_acquire)) {
+                    std::lock_guard<std::mutex> lk(pending_mutex_);
+                    bindings_ = std::move(pending_bindings_);
+                    bindings_dirty_.store(false, std::memory_order_relaxed);
+                }
+#ifdef EDGE_BTN_DEBUG
+                // Дамп изменившихся байт (bytes 11+) для нахождения Edge-кнопок.
+                // Запусти с EDGE_BTN_DEBUG=1, нажимай L4/LB/R4/RB по одной.
+                static uint8_t prev_dbg[1024] = {};
+                for (ssize_t i = 11; i < n; ++i) {
+                    if (buf[i] != prev_dbg[i]) {
+                        fprintf(stderr,
+                            "[EDGE] byte[%3zd] 0x%02X→0x%02X  diff=0x%02X  bits=",
+                            i, prev_dbg[i], (unsigned)buf[i],
+                            prev_dbg[i] ^ (unsigned)buf[i]);
+                        for (int b = 7; b >= 0; --b)
+                            fputc('0' + ((buf[i] >> b) & 1), stderr);
+                        fputc('\n', stderr);
+                    }
+                }
+                memcpy(prev_dbg, buf, static_cast<size_t>(n));
+#endif
+                ds5::apply_bindings(buf, static_cast<size_t>(n), bindings_);
+                // Clear Edge-exclusive bits (byte 10, upper nibble) before forwarding
+                // to virtual DualSense — it has no LFN/RFN/LB/RB in its HID profile.
+                if (static_cast<size_t>(n) > 10 && buf[0] == 0x01)
+                    buf[10] &= 0x0F;
                 virt_dev->send_input_report(buf, static_cast<size_t>(n));
                 ++input_count;
                 if (input_count % 1000 == 0)

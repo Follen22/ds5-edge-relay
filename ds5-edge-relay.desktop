@@ -1,3 +1,4 @@
+#!/usr/bin/env xdg-open
 [Desktop Entry]
 Name=DS5 Edge Relay
 GenericName=Gamepad Relay

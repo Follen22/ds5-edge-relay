@@ -1,9 +1,14 @@
 #include "mainwindow.hpp"
 #include "relayworker.hpp"
+#include "ds5_report.hpp"
+#include "bindeditorwidget.hpp"
 
 #include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
+#include <QEvent>
+#include <QMouseEvent>
+#include <QWindow>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -93,9 +98,11 @@ MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
     , settings_("ds5-edge-relay", "ds5-edge-relay")
 {
+    setWindowFlags(Qt::FramelessWindowHint | Qt::Window);
+    setAttribute(Qt::WA_TranslucentBackground);
     setWindowTitle("DS5 Edge Relay");
-    setMinimumWidth(380);
-    setMaximumWidth(380);
+    setMinimumWidth(520);
+    setMaximumWidth(520);
 
     setup_ui();
     setup_tray();
@@ -113,7 +120,8 @@ MainWindow::MainWindow(QWidget* parent)
 MainWindow::~MainWindow() {
     if (worker_) {
         worker_->stop();
-        worker_->wait(3000);
+        if (!worker_->wait(3000))
+            worker_->terminate();
     }
 }
 
@@ -122,92 +130,160 @@ MainWindow::~MainWindow() {
 void MainWindow::setup_ui() {
     auto* central = new QWidget(this);
     setCentralWidget(central);
+    central->setObjectName("CW");
+    central->setAttribute(Qt::WA_StyledBackground);
+    central->setStyleSheet(
+        "QWidget#CW {"
+        "  background: #12121f;"
+        "  border: 1px solid #2a2a45;"
+        "  border-radius: 10px;"
+        "}");
 
-    auto* layout = new QVBoxLayout(central);
-    layout->setSpacing(12);
-    layout->setContentsMargins(16, 16, 16, 16);
+    auto* outer = new QVBoxLayout(central);
+    outer->setSpacing(0);
+    outer->setContentsMargins(0, 0, 0, 0);
 
-    // ── Заголовок + кнопка языка ──────────────────────────────────────────────
-    auto* title_row = new QHBoxLayout();
+    // ── Кастомный title bar ───────────────────────────────────────────────────
+    custom_title_bar_ = new QWidget(central);
+    custom_title_bar_->setFixedHeight(42);
+    custom_title_bar_->setObjectName("TB");
+    custom_title_bar_->setAttribute(Qt::WA_StyledBackground);
+    custom_title_bar_->setStyleSheet(
+        "QWidget#TB {"
+        "  background: #0d0d1e;"
+        "  border-top-left-radius: 10px;"
+        "  border-top-right-radius: 10px;"
+        "  border-bottom: 1px solid #2a2a45;"
+        "}");
+    custom_title_bar_->installEventFilter(this);
 
-    title_label_ = new QLabel(this);
-    title_label_->setStyleSheet("font-size: 16px; font-weight: bold;");
-    title_row->addWidget(title_label_);
-    title_row->addStretch();
+    auto* tb = new QHBoxLayout(custom_title_bar_);
+    tb->setContentsMargins(14, 0, 6, 0);
+    tb->setSpacing(0);
 
-    lang_btn_ = new QPushButton(this);
-    lang_btn_->setFixedSize(36, 28);
+    title_label_ = new QLabel(custom_title_bar_);
+    title_label_->setStyleSheet(
+        "font-size: 13px; font-weight: bold; color: #e0e0f0; background: transparent;");
+    tb->addWidget(title_label_);
+    tb->addStretch();
+
+    lang_btn_ = new QPushButton(custom_title_bar_);
+    lang_btn_->setFixedSize(34, 28);
     lang_btn_->setStyleSheet(
-        "QPushButton { font-size: 16px; border: 1px solid #ccc; "
-        "border-radius: 5px; background: transparent; }"
-        "QPushButton:hover { background: rgba(0,0,0,0.06); }");
-    title_row->addWidget(lang_btn_);
+        "QPushButton { font-size: 16px; border: 1px solid #2a2a45;"
+        "border-radius: 6px; background: transparent; color: #e0e0f0; }"
+        "QPushButton:hover { background: #2a2a45; border-color: #00c9a7; }");
+    tb->addWidget(lang_btn_);
+    tb->addSpacing(8);
 
-    layout->addLayout(title_row);
+    auto* tb_sep = new QFrame(custom_title_bar_);
+    tb_sep->setFrameShape(QFrame::VLine);
+    tb_sep->setFixedHeight(18);
+    tb_sep->setStyleSheet("color: #2a2a45;");
+    tb->addWidget(tb_sep);
+    tb->addSpacing(4);
 
-    auto* line = new QFrame(this);
-    line->setFrameShape(QFrame::HLine);
-    line->setFrameShadow(QFrame::Sunken);
-    layout->addWidget(line);
+    auto* min_btn = new QPushButton("—", custom_title_bar_);
+    min_btn->setFixedSize(34, 28);
+    min_btn->setStyleSheet(
+        "QPushButton { background: transparent; color: #7878aa; border: none;"
+        "font-size: 14px; border-radius: 4px; }"
+        "QPushButton:hover { background: #2a2a45; color: #e0e0f0; }");
+    tb->addWidget(min_btn);
+
+    auto* close_btn = new QPushButton("✕", custom_title_bar_);
+    close_btn->setFixedSize(34, 28);
+    close_btn->setStyleSheet(
+        "QPushButton { background: transparent; color: #7878aa; border: none;"
+        "font-size: 11px; border-radius: 4px; }"
+        "QPushButton:hover { background: #c0392b; color: #ffffff; }");
+    tb->addWidget(close_btn);
+    tb->addSpacing(2);
+
+    outer->addWidget(custom_title_bar_);
+
+    // ── Контентная область ────────────────────────────────────────────────────
+    auto* content = new QWidget(central);
+    auto* layout  = new QVBoxLayout(content);
+    layout->setSpacing(12);
+    layout->setContentsMargins(16, 12, 16, 16);
 
     // ── Статус ────────────────────────────────────────────────────────────────
-    status_group_       = new QGroupBox(this);
+    status_group_       = new QGroupBox(content);
     auto* status_layout = new QVBoxLayout(status_group_);
 
-    status_label_ = new QLabel(this);
-    status_label_->setStyleSheet("font-size: 13px;");
+    status_label_ = new QLabel(content);
+    status_label_->setStyleSheet("font-size: 13px; color: #e0e0f0; background: transparent;");
     status_layout->addWidget(status_label_);
 
-    device_label_ = new QLabel(this);
-    device_label_->setStyleSheet("color: gray; font-size: 11px;");
+    device_label_ = new QLabel(content);
+    device_label_->setStyleSheet("color: #7878aa; font-size: 11px; background: transparent;");
     status_layout->addWidget(device_label_);
 
-    stats_label_ = new QLabel("Input: 0  |  Output: 0", this);
-    stats_label_->setStyleSheet("color: gray; font-size: 11px;");
+    stats_label_ = new QLabel("Input: 0  |  Output: 0", content);
+    stats_label_->setStyleSheet("color: #7878aa; font-size: 11px; background: transparent;");
     status_layout->addWidget(stats_label_);
 
     layout->addWidget(status_group_);
 
     // ── Кнопки управления ─────────────────────────────────────────────────────
     auto* btn_layout = new QHBoxLayout();
-    start_btn_ = new QPushButton(this);
-    stop_btn_  = new QPushButton(this);
+    start_btn_ = new QPushButton(content);
+    stop_btn_  = new QPushButton(content);
 
     start_btn_->setMinimumHeight(36);
     stop_btn_->setMinimumHeight(36);
     stop_btn_->setEnabled(false);
 
     start_btn_->setStyleSheet(
-        "QPushButton { background: #2ecc71; color: white; border-radius: 6px; font-weight: bold; }"
-        "QPushButton:hover { background: #27ae60; }"
-        "QPushButton:disabled { background: #ccc; color: #888; }");
+        "QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+        "stop:0 #00c9a7, stop:1 #00a896); color: #0a0a1a; border: none;"
+        "border-radius: 8px; font-weight: bold; font-size: 13px; }"
+        "QPushButton:hover { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+        "stop:0 #00e0bb, stop:1 #00c9a7); }"
+        "QPushButton:disabled { background: #1e1e35; color: #4a4a6a; border: none; }");
     stop_btn_->setStyleSheet(
-        "QPushButton { background: #e74c3c; color: white; border-radius: 6px; font-weight: bold; }"
-        "QPushButton:hover { background: #c0392b; }"
-        "QPushButton:disabled { background: #ccc; color: #888; }");
+        "QPushButton { background: #1e1220; color: #e05252; border: 1px solid #5a2a2a;"
+        "border-radius: 8px; font-weight: bold; font-size: 13px; }"
+        "QPushButton:hover { background: #e05252; color: #fff; border-color: #e05252; }"
+        "QPushButton:disabled { background: #1e1e35; color: #4a4a6a; border-color: #2a2a45; }");
 
     btn_layout->addWidget(start_btn_);
     btn_layout->addWidget(stop_btn_);
     layout->addLayout(btn_layout);
 
     // ── Настройки ─────────────────────────────────────────────────────────────
-    settings_group_       = new QGroupBox(this);
+    settings_group_       = new QGroupBox(content);
     auto* settings_layout = new QVBoxLayout(settings_group_);
 
-    background_cb_ = new QCheckBox(this);
+    background_cb_ = new QCheckBox(content);
     settings_layout->addWidget(background_cb_);
 
-    autostart_cb_ = new QCheckBox(this);
+    autostart_cb_ = new QCheckBox(content);
     settings_layout->addWidget(autostart_cb_);
 
     layout->addWidget(settings_group_);
 
+    // ── Bind editor ───────────────────────────────────────────────────────────
+    bind_editor_ = new BindEditorWidget(content);
+    layout->addWidget(bind_editor_);
+
+    outer->addWidget(content);
+
     // ── Сигналы ───────────────────────────────────────────────────────────────
-    connect(start_btn_,    &QPushButton::clicked, this, &MainWindow::on_start_clicked);
-    connect(stop_btn_,     &QPushButton::clicked, this, &MainWindow::on_stop_clicked);
-    connect(lang_btn_,     &QPushButton::clicked, this, &MainWindow::on_lang_clicked);
-    connect(autostart_cb_, &QCheckBox::toggled,   this, &MainWindow::on_autostart_toggled);
-    connect(background_cb_,&QCheckBox::toggled,   this, [this](bool) { save_settings(); });
+    connect(start_btn_,     &QPushButton::clicked, this, &MainWindow::on_start_clicked);
+    connect(stop_btn_,      &QPushButton::clicked, this, &MainWindow::on_stop_clicked);
+    connect(lang_btn_,      &QPushButton::clicked, this, &MainWindow::on_lang_clicked);
+    connect(autostart_cb_,  &QCheckBox::toggled,   this, &MainWindow::on_autostart_toggled);
+    connect(background_cb_, &QCheckBox::toggled,   this, [this](bool) { save_settings(); });
+    connect(close_btn,      &QPushButton::clicked, this, &MainWindow::close);
+    connect(min_btn,        &QPushButton::clicked, this, &MainWindow::showMinimized);
+
+    // Live-apply bindings to a running worker when the user toggles them
+    connect(bind_editor_, &BindEditorWidget::bindingsChanged, this, [this]() {
+        if (worker_ && worker_->isRunning())
+            worker_->update_bindings(bind_editor_->activeBindings());
+    });
 }
 
 void MainWindow::setup_tray() {
@@ -273,6 +349,7 @@ void MainWindow::retranslate_ui() {
     tray_toggle_->setText(is_running_ ? s.btn_stop : s.btn_start);
     tray_show_action_->setText(s.tray_action_show);
     tray_quit_->setText(s.tray_action_quit);
+    bind_editor_->retranslate(lang_ru_);
 }
 
 // ── Слоты ─────────────────────────────────────────────────────────────────────
@@ -297,6 +374,8 @@ void MainWindow::on_start_clicked() {
         status_label_->setText(msg);
     });
 
+    worker_->set_bindings(bind_editor_->activeBindings());
+
     worker_->start();
     const LangStrings s = lang_ru_ ? make_ru() : make_en();
     status_label_->setText(s.status_starting);
@@ -307,7 +386,8 @@ void MainWindow::on_stop_clicked() {
     user_stopped_ = true;
     reconnect_timer_->stop();
     worker_->stop();
-    worker_->wait(3000);
+    if (!worker_->wait(3000))
+        worker_->terminate();
     update_state(false);
 }
 
@@ -380,6 +460,7 @@ void MainWindow::update_state(bool running) {
     is_running_ = running;
     start_btn_->setEnabled(!running);
     stop_btn_->setEnabled(running);
+    bind_editor_->setRunning(running);
     if (!running) stats_label_->setText("Input: 0  |  Output: 0");
     retranslate_ui();
 }
@@ -393,6 +474,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
             worker_->stop();
             worker_->wait(3000);
         }
+        tray_icon_->hide();
         event->accept();
     }
 }
@@ -436,4 +518,15 @@ void MainWindow::set_autostart(bool enable) {
     } else {
         QFile::remove(path);
     }
+}
+
+bool MainWindow::eventFilter(QObject* obj, QEvent* event)
+{
+    if (obj == custom_title_bar_
+            && event->type() == QEvent::MouseButtonPress) {
+        auto* e = static_cast<QMouseEvent*>(event);
+        if (e->button() == Qt::LeftButton && windowHandle())
+            windowHandle()->startSystemMove();
+    }
+    return QMainWindow::eventFilter(obj, event);
 }

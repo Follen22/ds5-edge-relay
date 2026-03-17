@@ -17,10 +17,16 @@ add_compile_options(
     -Wno-unused-result
 )
 
+# Раскомментируй чтобы включить дамп Edge-кнопок в stderr:
+# add_compile_definitions(EDGE_BTN_DEBUG)
+
 add_executable(ds5-edge-relay
     src/main.cpp
     src/mainwindow.cpp
     src/relayworker.cpp
+    src/gamepadwidget.cpp
+    src/bindeditorwidget.cpp
+    src/bindstorage.cpp
 )
 
 target_include_directories(ds5-edge-relay PRIVATE
@@ -34,10 +40,7 @@ target_link_libraries(ds5-edge-relay PRIVATE
 )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    target_compile_options(ds5-edge-relay PRIVATE -O3)
+    target_compile_options(ds5-edge-relay-test PRIVATE -O3)
     set_target_properties(ds5-edge-relay PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
-
-install(TARGETS ds5-edge-relay DESTINATION /usr/bin)
-install(FILES ds5-edge-relay.desktop DESTINATION /usr/share/applications)

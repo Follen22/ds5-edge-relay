@@ -7,6 +7,7 @@
 #include <memory>
 
 class RelayWorker;
+class BindEditorWidget;
 class QLabel;
 class QPushButton;
 class QCheckBox;
@@ -55,6 +56,7 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* event) override;
+    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private slots:
     void on_start_clicked();
@@ -82,6 +84,7 @@ private:
     static LangStrings make_en();
 
     // UI элементы
+    QWidget*     custom_title_bar_ = nullptr;
     QLabel*      title_label_    = nullptr;
     QGroupBox*   status_group_   = nullptr;
     QLabel*      status_label_   = nullptr;
@@ -92,7 +95,8 @@ private:
     QGroupBox*   settings_group_ = nullptr;
     QCheckBox*   background_cb_  = nullptr;
     QCheckBox*   autostart_cb_   = nullptr;
-    QPushButton* lang_btn_       = nullptr;
+    QPushButton*      lang_btn_     = nullptr;
+    BindEditorWidget* bind_editor_ = nullptr;
 
     // Системный трей
     QSystemTrayIcon* tray_icon_        = nullptr;
