@@ -6,7 +6,7 @@
 
 ## Why it exists
 
-The DualSense Edge has a non-standard USB PID (0x0DF2) and extra back buttons (L4, LB, R4, RB, LFN, RFN) that Proton and many Linux games do not recognise. The relay daemon makes the Edge appear as a standard DualSense — restoring full game compatibility while adding button remapping on top.
+The DualSense Edge has a non-standard USB PID (0x0DF2) and extra back buttons (LFN, RFN, LB, RB) that Proton and many Linux games do not recognise. The relay daemon makes the Edge appear as a standard DualSense — restoring full game compatibility while adding button remapping and a macro engine on top.
 
 ---
 
@@ -19,6 +19,10 @@ The DualSense Edge has a non-standard USB PID (0x0DF2) and extra back buttons (L
 | Multi-direction D-pad | Bindings to multiple D-pad directions combine correctly into hat-switch diagonals |
 | Live binding updates | Toggle/untoggle bindings while the relay is running — no restart needed |
 | Edge-exclusive buttons | LFN, RFN, LB, RB usable as trigger sources for remapping |
+| **Macro engine** | Record sequences of button presses with precise timing, bind each macro to a trigger button |
+| **Joystick axis capture** | Macros record full stick trajectory (left/right stick) alongside button presses |
+| **LFN Quick Record** | Press LFN to start recording, press LFN again to stop — macro auto-binds to RFN. Activated via the ⚡ Quick macros toggle |
+| **Controller persistence** | Virtual DualSense survives physical controller reconnects — game never loses the device |
 | Output forwarding | Haptics, adaptive triggers and LED commands are forwarded back to the physical device |
 | Auto-reconnect | Automatically reconnects when the controller is unplugged and plugged back in |
 | System tray | Minimises to tray; "Run in background" keeps the relay alive after window close |
@@ -102,6 +106,30 @@ Bindings are saved to `~/.config/ds5-edge-relay/binds.json` and loaded automatic
 - Binding a button to multiple D-pad directions creates diagonals (e.g. Up+Right → NE).
 - Opposing directions cancel each other (Left+Right → neutral, Left+Up+Right → Up).
 
+### Macros
+
+Open the **Macros** panel from the binding editor. Each macro has:
+
+- **Name** — editable label shown in the list.
+- **Trigger button** — which button fires the macro during playback.
+- **Enabled** checkbox — disable without deleting.
+- **Event table** — recorded button presses/releases with editable delays (ms). Stick movements are shown as grouped rows with peak deflection.
+
+**Recording a macro:**
+1. Click **⏺ Record macro**.
+2. Press buttons and move sticks on your controller — all inputs are captured with timing.
+3. Click **⏹ Stop recording**.
+4. Set a trigger button in the detail panel.
+
+**Quick Record (LFN shortcut):**
+1. Click **⚡ Quick macros** to activate the mode (button turns green).
+2. Press **LFN** on the controller to start recording.
+3. Press **LFN** again to stop — the macro is automatically saved and bound to **RFN**.
+4. Each new quick recording replaces the previous one.
+5. While Quick macros is active, any LFN/RFN bindings in the remapping editor are suspended to avoid conflicts.
+
+Macros are saved to `~/.config/ds5-edge-relay/macros.json`.
+
 ### Running in background
 
 Enable **Run in background when window is closed** — the relay keeps running in the system tray after you close the window. Click the tray icon to reopen it.
@@ -139,15 +167,19 @@ Valid button names: `Cross`, `Circle`, `Square`, `Triangle`, `L1`, `R1`, `L2`, `
 
 ```
 MainWindow (Qt GUI thread)
-├── BindEditorWidget   — visual binding editor, emits bindingsChanged()
-│   ├── GamepadWidget  — clickable gamepad diagram (1.png, Screen blend)
-│   └── BindStorage    — JSON persistence (~/.config/ds5-edge-relay/binds.json)
+├── BindEditorWidget     — visual binding editor, emits bindingsChanged()
+│   ├── GamepadWidget    — clickable gamepad diagram (Screen blend overlay)
+│   └── BindStorage      — JSON persistence (~/.config/ds5-edge-relay/binds.json)
+├── MacroWidget          — macro list, record/playback UI, quick-record toggle
+│   └── MacroEngine      — thread-safe record/playback engine, JSON persistence
 └── RelayWorker (QThread)
-    ├── find_hidraw_device()  — scans sysfs for VID:PID 054C:0DF2
-    ├── UhidDevice            — creates /dev/uhid virtual DualSense 054C:0CE6
-    ├── poll() loop           — multiplexes physical hidraw ↔ virtual uhid
-    ├── apply_bindings()      — remaps buttons in raw HID report buffer
-    └── update_bindings()     — thread-safe live update from UI thread
+    ├── find_hidraw_device()   — scans sysfs for VID:PID 054C:0DF2
+    ├── EvdevGrabber           — EVIOCGRAB on all evdev nodes + hidraw chmod lock
+    ├── UhidDevice             — persistent virtual DualSense 054C:0CE6 (survives reconnects)
+    ├── poll() loop            — multiplexes physical hidraw ↔ virtual uhid
+    ├── LFN quick-record       — rising-edge detection, injects macro into engine
+    ├── apply_bindings()       — remaps buttons in raw HID report buffer
+    └── MacroEngine::process_report() — trigger detection + playback axis/button overlay
 ```
 
 ---
