@@ -60,10 +60,6 @@ inline constexpr ButtonBit BTN_RFN = {10, 0x20};  // right Fn button  (bit5)
 inline constexpr ButtonBit BTN_LB  = {10, 0x40};  // left  paddle     (bit6)
 inline constexpr ButtonBit BTN_RB  = {10, 0x80};  // right paddle     (bit7)
 
-// DualSense Edge ridged back buttons (byte 44 — keep for future use)
-inline constexpr ButtonBit BTN_L4  = {44, 0x10};  // upper-left  ridged
-inline constexpr ButtonBit BTN_R4  = {44, 0x40};  // upper-right ridged
-
 // Analog axis offsets
 inline constexpr size_t OFFSET_L2_ANALOG = 5;
 inline constexpr size_t OFFSET_R2_ANALOG = 6;

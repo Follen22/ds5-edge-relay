@@ -37,10 +37,22 @@ BindEditorWidget::BindEditorWidget(QWidget* parent)
     outer->setContentsMargins(0, 0, 0, 0);
     outer->setSpacing(0);
 
-    // ── Header checkbox ───────────────────────────────────────────────────────
+    // ── Header row: оба чекбокса в одну строку ────────────────────────────────
+    auto* header_row = new QHBoxLayout();
+    header_row->setContentsMargins(0, 0, 0, 0);
+    header_row->setSpacing(16);
+
     use_bindings_cb_ = new QCheckBox("Использовать бинды", this);
     use_bindings_cb_->setStyleSheet("font-weight: bold; padding: 4px 0; color: #e0e0f0;");
-    outer->addWidget(use_bindings_cb_);
+    header_row->addWidget(use_bindings_cb_);
+
+    header_row->addStretch();
+
+    use_macros_cb_ = new QCheckBox("Использовать макросы", this);
+    use_macros_cb_->setStyleSheet("font-weight: bold; padding: 4px 0; color: #e0e0f0;");
+    header_row->addWidget(use_macros_cb_);
+
+    outer->addLayout(header_row);
 
     // ── Animated content area ─────────────────────────────────────────────────
     content_ = new QWidget(this);
@@ -115,6 +127,8 @@ BindEditorWidget::BindEditorWidget(QWidget* parent)
     // ── Signal connections ────────────────────────────────────────────────────
     connect(use_bindings_cb_, &QCheckBox::toggled,
             this, &BindEditorWidget::on_use_bindings_toggled);
+    connect(use_macros_cb_, &QCheckBox::toggled,
+            this, &BindEditorWidget::macrosToggled);
     connect(set_bind_btn_, &QPushButton::clicked,
             this, &BindEditorWidget::on_set_bind_clicked);
     connect(apply_btn_, &QPushButton::clicked,
@@ -325,7 +339,8 @@ void BindEditorWidget::save_binds()
 void BindEditorWidget::retranslate(bool ru)
 {
     lang_ru_ = ru;
-    use_bindings_cb_->setText(ru ? "Использовать бинды" : "Use bindings");
+    use_bindings_cb_->setText(ru ? "Использовать бинды"   : "Use bindings");
+    use_macros_cb_->setText  (ru ? "Использовать макросы" : "Use macros");
     set_bind_btn_->setText(ru ? "Задать бинд" : "Add binding");
     apply_btn_->setText(ru ? "Применить" : "Apply");
     update_status_text();

@@ -27,6 +27,9 @@ add_executable(ds5-edge-relay
     src/gamepadwidget.cpp
     src/bindeditorwidget.cpp
     src/bindstorage.cpp
+    relay-core/evdev_grabber.cpp
+    relay-core/macro_engine.cpp
+    relay-core/macro_widget.cpp
     resources.qrc
 )
 

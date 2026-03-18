@@ -140,7 +140,11 @@ void GamepadWidget::paintEvent(QPaintEvent*)
 
         p.setBrush(col);
         p.setPen(Qt::NoPen);
-        p.drawRoundedRect(pr, 4, 4);
+        // pill shape for wide buttons (L1/R1), ellipse for everything else
+        if (pr.width() / pr.height() > 1.7)
+            p.drawRoundedRect(pr, pr.height() * 0.5, pr.height() * 0.5);
+        else
+            p.drawEllipse(pr);
 
 #ifdef QT_DEBUG
         p.setPen(QPen(col.darker(130), 1.0));

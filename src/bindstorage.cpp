@@ -84,8 +84,9 @@ static const struct { const char* name; ds5::ButtonBit btn; } NAME_MAP[] = {
     {"RFN",       ds5::BTN_RFN},
     {"LB",        ds5::BTN_LB},
     {"RB",        ds5::BTN_RB},
-    {"L4",        ds5::BTN_L4},
-    {"R4",        ds5::BTN_R4},
+    // "L4"/"R4" — legacy aliases for LFN/RFN (backward compat with old binds.json)
+    {"L4",        ds5::BTN_LFN},
+    {"R4",        ds5::BTN_RFN},
 };
 
 ds5::ButtonBit nameToBtn(const QString& name)

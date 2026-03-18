@@ -1,5 +1,6 @@
 <RCC>
     <qresource prefix="/">
         <file>1.png</file>
+        <file>input-gaming.svg</file>
     </qresource>
 </RCC>

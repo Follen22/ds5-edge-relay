@@ -8,6 +8,8 @@
 
 class RelayWorker;
 class BindEditorWidget;
+class QPropertyAnimation;
+namespace macro { class MacroWidget; }
 class QLabel;
 class QPushButton;
 class QCheckBox;
@@ -96,7 +98,10 @@ private:
     QCheckBox*   background_cb_  = nullptr;
     QCheckBox*   autostart_cb_   = nullptr;
     QPushButton*      lang_btn_     = nullptr;
-    BindEditorWidget* bind_editor_ = nullptr;
+    BindEditorWidget*      bind_editor_      = nullptr;
+    macro::MacroWidget*    macro_widget_     = nullptr;
+    QWidget*               macro_container_  = nullptr;
+    QPropertyAnimation*    macro_anim_       = nullptr;
 
     // Системный трей
     QSystemTrayIcon* tray_icon_        = nullptr;

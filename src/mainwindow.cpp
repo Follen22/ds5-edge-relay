@@ -2,6 +2,7 @@
 #include "relayworker.hpp"
 #include "ds5_report.hpp"
 #include "bindeditorwidget.hpp"
+#include "macro_widget.hpp"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -20,6 +21,8 @@
 #include <QVBoxLayout>
 #include <QAction>
 #include <QFrame>
+#include <QPropertyAnimation>
+#include <QEasingCurve>
 #include <QStandardPaths>
 #include <QDir>
 #include <QFile>
@@ -102,13 +105,39 @@ MainWindow::MainWindow(QWidget* parent)
     setAttribute(Qt::WA_TranslucentBackground);
     setWindowTitle("DS5 Edge Relay");
     setMinimumWidth(520);
-    setMaximumWidth(520);
+
+    // Создаём worker один раз — указатель macro_engine() остаётся стабильным
+    worker_ = new RelayWorker(this);
 
     setup_ui();
     setup_tray();
     load_settings();
     retranslate_ui();
     update_state(false);
+
+    // Подключаем сигналы worker_ после setup_ui() — все виджеты уже созданы
+    connect(worker_, &RelayWorker::started_ok,         this, &MainWindow::on_relay_started);
+    connect(worker_, &RelayWorker::error,               this, &MainWindow::on_relay_error);
+    connect(worker_, &RelayWorker::stats,               this, &MainWindow::on_relay_stats);
+    connect(worker_, &RelayWorker::device_disconnected, this, &MainWindow::on_relay_disconnected);
+    connect(worker_, &RelayWorker::log_message, this, [this](const QString& msg) {
+        status_label_->setText(msg);
+    });
+    connect(worker_, &RelayWorker::macro_playback_state,
+            macro_widget_, &macro::MacroWidget::on_playback_state);
+    connect(worker_, &RelayWorker::quick_macro_recorded,
+            macro_widget_, &macro::MacroWidget::reload_from_engine);
+    connect(macro_widget_, &macro::MacroWidget::quick_macros_toggled,
+            this, [this](bool enabled) { worker_->set_quick_macros_enabled(enabled); });
+
+    // Авто-запуск listen mode для записи макросов без активного relay
+    connect(macro_widget_, &macro::MacroWidget::recording_state_changed,
+            this, [this](bool recording) {
+        if (recording && !worker_->isRunning())
+            worker_->start_listen_mode();
+        else if (!recording && worker_->is_listen_mode())
+            worker_->stop();
+    });
 
     reconnect_timer_ = new QTimer(this);
     reconnect_timer_->setSingleShot(true);
@@ -202,8 +231,14 @@ void MainWindow::setup_ui() {
 
     outer->addWidget(custom_title_bar_);
 
-    // ── Контентная область ────────────────────────────────────────────────────
-    auto* content = new QWidget(central);
+    // ── Горизонтальная обёртка: левый контент + правая макро-панель ───────────
+    auto* content_row = new QWidget(central);
+    auto* h_layout    = new QHBoxLayout(content_row);
+    h_layout->setSpacing(0);
+    h_layout->setContentsMargins(0, 0, 0, 0);
+
+    // ── Левая панель: основной контент ────────────────────────────────────────
+    auto* content = new QWidget(content_row);
     auto* layout  = new QVBoxLayout(content);
     layout->setSpacing(12);
     layout->setContentsMargins(16, 12, 16, 16);
@@ -268,7 +303,41 @@ void MainWindow::setup_ui() {
     bind_editor_ = new BindEditorWidget(content);
     layout->addWidget(bind_editor_);
 
-    outer->addWidget(content);
+    // Левая панель заканчивается здесь
+    h_layout->addWidget(content);
+
+    // ── Правая панель: macro_container_ (выдвигается вправо) ─────────────────
+    macro_widget_ = new macro::MacroWidget(worker_->macro_engine(), nullptr);
+    macro_widget_->set_save_path(
+        QDir::homePath() + "/.config/ds5-edge-relay/macros.json");
+    macro_widget_->load_macros();
+
+    macro_container_ = new QWidget(content_row);
+    macro_container_->setMinimumWidth(0);
+    macro_container_->setMaximumWidth(0);
+    macro_container_->hide();
+    macro_container_->setStyleSheet(
+        "border-left: 1px solid #2a2a45;");
+    auto* mc_layout = new QVBoxLayout(macro_container_);
+    mc_layout->setContentsMargins(8, 4, 8, 8);
+    mc_layout->setSpacing(0);
+    mc_layout->addWidget(macro_widget_);
+    h_layout->addWidget(macro_container_);
+
+    macro_anim_ = new QPropertyAnimation(macro_container_, "maximumWidth", this);
+    macro_anim_->setDuration(220);
+    macro_anim_->setEasingCurve(QEasingCurve::InOutCubic);
+    connect(macro_anim_, &QPropertyAnimation::valueChanged, this, [this](const QVariant&) {
+        if (auto* w = window()) w->adjustSize();
+    });
+    connect(macro_anim_, &QPropertyAnimation::finished, this, [this]() {
+        if (macro_anim_->endValue().toInt() == 0)
+            macro_container_->hide();
+        macro_container_->setMaximumWidth(QWIDGETSIZE_MAX);
+        if (auto* w = window()) w->adjustSize();
+    });
+
+    outer->addWidget(content_row);
 
     // ── Сигналы ───────────────────────────────────────────────────────────────
     connect(start_btn_,     &QPushButton::clicked, this, &MainWindow::on_start_clicked);
@@ -284,11 +353,32 @@ void MainWindow::setup_ui() {
         if (worker_ && worker_->isRunning())
             worker_->update_bindings(bind_editor_->activeBindings());
     });
+
+    // Анимация выдвижения макро-панели вправо
+    connect(bind_editor_, &BindEditorWidget::macrosToggled, this, [this](bool checked) {
+        if (checked) {
+            macro_container_->setMinimumWidth(0);
+            macro_container_->setMaximumWidth(0);
+            macro_container_->show();
+            macro_anim_->stop();
+            macro_anim_->setStartValue(0);
+            // Измеряем естественную ширину: снимаем ограничение на миг
+            macro_container_->setMaximumWidth(QWIDGETSIZE_MAX);
+            const int target = macro_container_->sizeHint().width();
+            macro_container_->setMaximumWidth(0);
+            macro_anim_->setEndValue(target);
+            macro_anim_->start();
+        } else {
+            macro_anim_->stop();
+            macro_anim_->setStartValue(macro_container_->width());
+            macro_anim_->setEndValue(0);
+            macro_anim_->start();
+        }
+    });
 }
 
 void MainWindow::setup_tray() {
-    const QIcon icon = QIcon::fromTheme("input-gaming",
-                       QIcon::fromTheme("media-playback-start"));
+    const QIcon icon = QIcon(":/input-gaming.svg");
 
     tray_icon_ = new QSystemTrayIcon(icon, this);
     tray_menu_ = new QMenu(this);
@@ -363,19 +453,8 @@ void MainWindow::on_lang_clicked() {
 void MainWindow::on_start_clicked() {
     if (worker_ && worker_->isRunning()) return;
     user_stopped_ = false;
-    delete worker_;
-    worker_ = new RelayWorker(this);
-
-    connect(worker_, &RelayWorker::started_ok,         this, &MainWindow::on_relay_started);
-    connect(worker_, &RelayWorker::error,               this, &MainWindow::on_relay_error);
-    connect(worker_, &RelayWorker::stats,               this, &MainWindow::on_relay_stats);
-    connect(worker_, &RelayWorker::device_disconnected, this, &MainWindow::on_relay_disconnected);
-    connect(worker_, &RelayWorker::log_message, this, [this](const QString& msg) {
-        status_label_->setText(msg);
-    });
 
     worker_->set_bindings(bind_editor_->activeBindings());
-
     worker_->start();
     const LangStrings s = lang_ru_ ? make_ru() : make_en();
     status_label_->setText(s.status_starting);
@@ -476,6 +555,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         }
         tray_icon_->hide();
         event->accept();
+        QApplication::quit();
     }
 }
 

@@ -21,7 +21,8 @@ public:
     void retranslate(bool ru);
 
 signals:
-    void bindingsChanged(); // emitted whenever the active binding set changes
+    void bindingsChanged();   // emitted whenever the active binding set changes
+    void macrosToggled(bool); // emitted when "use macros" checkbox is toggled
 
 private slots:
     void on_use_bindings_toggled(bool checked);
@@ -39,6 +40,7 @@ private:
     void update_status_text();
 
     QCheckBox*          use_bindings_cb_ = nullptr;
+    QCheckBox*          use_macros_cb_   = nullptr;
     QWidget*            content_         = nullptr;
     GamepadWidget*      gamepad_         = nullptr;
     QLabel*             status_label_    = nullptr;
